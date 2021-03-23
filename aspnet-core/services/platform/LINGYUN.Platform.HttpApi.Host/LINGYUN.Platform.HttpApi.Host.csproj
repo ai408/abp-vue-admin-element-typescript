@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Remove="%2a%2a\**" />
     <Content Remove="%2a%2a\**" />
+    <Content Include="appsettings.Development.json" />
     <EmbeddedResource Remove="%2a%2a\**" />
     <None Remove="%2a%2a\**" />
   </ItemGroup>
