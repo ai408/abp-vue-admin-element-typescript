@@ -89,8 +89,7 @@
 
 <script lang="ts">
 import { PersistedGrant } from '@/api/grants'
-import { Component, Prop, Watch } from 'vue-property-decorator'
-import { mixins } from 'vue-class-component'
+import { Component, Prop, Watch, Mixins } from 'vue-property-decorator'
 import { dateFormat } from '@/utils/index'
 import HttpProxyMiXin from '@/mixins/HttpProxyMiXin'
 import JsonEditor from '@/components/JsonEditor/index.vue'
@@ -110,7 +109,7 @@ import JsonEditor from '@/components/JsonEditor/index.vue'
     }
   }
 })
-export default class extends mixins(HttpProxyMiXin) {
+export default class extends Mixins(HttpProxyMiXin) {
   @Prop({ default: false })
   private showDialog!: boolean
 
@@ -139,7 +138,7 @@ export default class extends mixins(HttpProxyMiXin) {
         service: 'IdentityServer',
         controller: 'PersistedGrant',
         action: 'GetAsync',
-        data: {
+        params: {
           id: this.id
         }
       }).then(res => {

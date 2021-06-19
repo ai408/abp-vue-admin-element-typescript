@@ -8,7 +8,6 @@ using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
 using Volo.Abp.Caching;
 using Volo.Abp.Emailing;
-using Volo.Abp.Identity.Features;
 using Volo.Abp.Identity.Settings;
 using Volo.Abp.Localization;
 using Volo.Abp.MultiTenancy;
@@ -17,6 +16,8 @@ using Volo.Abp.SettingManagement.Localization;
 using Volo.Abp.Settings;
 using Volo.Abp.Timing;
 using Volo.Abp.Users;
+using Volo.Abp.EventBus.Distributed;
+using Volo.Abp.AspNetCore.Mvc.ApplicationConfigurations;
 
 namespace LINGYUN.Abp.SettingManagement
 {
@@ -25,17 +26,20 @@ namespace LINGYUN.Abp.SettingManagement
     {
         protected AbpLocalizationOptions LocalizationOptions { get; }
 
+        protected IDistributedEventBus EventBus { get; }
         protected ISettingManager SettingManager { get; }
         protected ISettingDefinitionManager SettingDefinitionManager { get; }
 
         protected IDistributedCache<SettingCacheItem> Cache { get; }
         public SettingAppService(
+            IDistributedEventBus eventBus,
             ISettingManager settingManager,
             IDistributedCache<SettingCacheItem> cache,
             IOptions<AbpLocalizationOptions> localizationOptions,
             ISettingDefinitionManager settingDefinitionManager)
         {
             Cache = cache;
+            EventBus = eventBus;
             SettingManager = settingManager;
             SettingDefinitionManager = settingDefinitionManager;
             LocalizationOptions = localizationOptions.Value;
@@ -50,6 +54,12 @@ namespace LINGYUN.Abp.SettingManagement
                 await SettingManager.SetGlobalAsync(setting.Name, setting.Value);
             }
 
+            CurrentUnitOfWork.OnCompleted(async () =>
+            {
+                // 发送刷新用户缓存事件
+                await EventBus.PublishAsync(new CurrentApplicationConfigurationCacheResetEventData());
+            });
+
             await CurrentUnitOfWork.SaveChangesAsync();
         }
 
@@ -62,6 +72,12 @@ namespace LINGYUN.Abp.SettingManagement
                 {
                     await SettingManager.SetForTenantAsync(CurrentTenant.GetId(), setting.Name, setting.Value);
                 }
+
+                CurrentUnitOfWork.OnCompleted(async () =>
+                {
+                    // 发送刷新用户缓存事件
+                    await EventBus.PublishAsync(new CurrentApplicationConfigurationCacheResetEventData());
+                });
 
                 await CurrentUnitOfWork.SaveChangesAsync();
             }
@@ -266,20 +282,21 @@ namespace LINGYUN.Abp.SettingManagement
 
             #region 双因素
 
-            var twoFactorSetting = identitySetting.AddSetting(L["DisplayName:Identity.TwoFactor"], L["Description:Identity.TwoFactor"]);
-            twoFactorSetting.AddDetail(
-                SettingDefinitionManager.Get(IdentitySettingNames.TwoFactor.Behaviour),
-                StringLocalizerFactory,
-                await SettingManager.GetOrNullAsync(IdentitySettingNames.TwoFactor.Behaviour, providerName, providerKey),
-                ValueType.Option)
-                .AddOption(IdentityTwoFactorBehaviour.Optional.ToString(), IdentityTwoFactorBehaviour.Optional.ToString())
-                .AddOption(IdentityTwoFactorBehaviour.Forced.ToString(), IdentityTwoFactorBehaviour.Forced.ToString())
-                .AddOption(IdentityTwoFactorBehaviour.Disabled.ToString(), IdentityTwoFactorBehaviour.Disabled.ToString());
-            twoFactorSetting.AddDetail(
-                SettingDefinitionManager.Get(IdentitySettingNames.TwoFactor.UsersCanChange),
-                StringLocalizerFactory,
-                await SettingManager.GetOrNullAsync(IdentitySettingNames.TwoFactor.UsersCanChange, providerName, providerKey),
-                ValueType.Boolean);
+            // Removed See: https://github.com/abpframework/abp/pull/7719
+            //var twoFactorSetting = identitySetting.AddSetting(L["DisplayName:Identity.TwoFactor"], L["Description:Identity.TwoFactor"]);
+            //twoFactorSetting.AddDetail(
+            //    SettingDefinitionManager.Get(IdentitySettingNames.TwoFactor.Behaviour),
+            //    StringLocalizerFactory,
+            //    await SettingManager.GetOrNullAsync(IdentitySettingNames.TwoFactor.Behaviour, providerName, providerKey),
+            //    ValueType.Option)
+            //    .AddOption(IdentityTwoFactorBehaviour.Optional.ToString(), IdentityTwoFactorBehaviour.Optional.ToString())
+            //    .AddOption(IdentityTwoFactorBehaviour.Forced.ToString(), IdentityTwoFactorBehaviour.Forced.ToString())
+            //    .AddOption(IdentityTwoFactorBehaviour.Disabled.ToString(), IdentityTwoFactorBehaviour.Disabled.ToString());
+            //twoFactorSetting.AddDetail(
+            //    SettingDefinitionManager.Get(IdentitySettingNames.TwoFactor.UsersCanChange),
+            //    StringLocalizerFactory,
+            //    await SettingManager.GetOrNullAsync(IdentitySettingNames.TwoFactor.UsersCanChange, providerName, providerKey),
+            //    ValueType.Boolean);
 
             #endregion
 

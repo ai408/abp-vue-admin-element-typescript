@@ -1,7 +1,9 @@
 using DotNetCore.CAP;
+using LINGYUN.Abp.AspNetCore.HttpOverrides;
 using LINGYUN.Abp.EventBus.CAP;
 using LINGYUN.Abp.ExceptionHandling;
 using LINGYUN.Abp.ExceptionHandling.Emailing;
+using LINGYUN.Abp.LocalizationManagement.EntityFrameworkCore;
 using LINGYUN.Abp.MultiTenancy.DbFinder;
 using LINGYUN.Abp.Sms.Aliyun;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -63,12 +65,14 @@ namespace LINGYUN.Abp.IdentityServer4
         typeof(AbpTenantManagementEntityFrameworkCoreModule),
         typeof(AbpSettingManagementEntityFrameworkCoreModule),
         typeof(AbpPermissionManagementEntityFrameworkCoreModule),
+        typeof(AbpLocalizationManagementEntityFrameworkCoreModule),
         typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
         typeof(AbpEmailingExceptionHandlingModule),
         typeof(AbpCAPEventBusModule),
         typeof(AbpAliyunSmsModule),
         typeof(AbpDbFinderMultiTenancyModule),
         typeof(AbpCachingStackExchangeRedisModule),
+        typeof(AbpAspNetCoreHttpOverridesModule),
         typeof(AbpAutofacModule)
         )]
     public class AbpIdentityServerAdminHttpApiHostModule : AbpModule
@@ -99,34 +103,12 @@ namespace LINGYUN.Abp.IdentityServer4
             var hostingEnvironment = context.Services.GetHostingEnvironment();
             var configuration = hostingEnvironment.BuildConfiguration();
 
-            // 请求代理配置
-            Configure<ForwardedHeadersOptions>(options =>
-            {
-                configuration.GetSection("App:Forwarded").Bind(options);
-                // 对于生产环境,为安全考虑需要在配置中指定受信任代理服务器
-                options.KnownNetworks.Clear();
-                options.KnownProxies.Clear();
-            });
-
             // 配置Ef
             Configure<AbpDbContextOptions>(options =>
             {
                 options.UseMySQL();
-                //if (hostingEnvironment.IsDevelopment())
-                //{
-                //    options.PreConfigure(ctx =>
-                //    {
-                //        ctx.DbContextOptions.EnableDetailedErrors();
-                //        ctx.DbContextOptions.EnableSensitiveDataLogging();
-                //    });
-                //}
             });
 
-            // 解决某些不支持类型的序列化
-            Configure<AbpJsonOptions>(options =>
-            {
-                options.UseHybridSerializer = true;
-            });
             // 中文序列化的编码问题
             Configure<AbpSystemTextJsonSerializerOptions>(options =>
             {
@@ -274,11 +256,8 @@ namespace LINGYUN.Abp.IdentityServer4
                 options.Resources
                        .Get<IdentityResource>()
                        .AddVirtualJson("/LINGYUN/Abp/IdentityServer4/Localization");
-            });
 
-            Configure<AbpClaimsMapOptions>(options =>
-            {
-                options.Maps.TryAdd("name", () => AbpClaimTypes.UserName);
+                options.Resources.AddDynamic(typeof(IdentityResource));
             });
 
             context.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -301,12 +280,10 @@ namespace LINGYUN.Abp.IdentityServer4
         public override void OnApplicationInitialization(ApplicationInitializationContext context)
         {
             var app = context.GetApplicationBuilder();
-
-            app.UseForwardedHeaders();
             // http调用链
             app.UseCorrelationId();
             // 虚拟文件系统
-            app.UseVirtualFiles();
+            app.UseStaticFiles();
             // 本地化
             app.UseAbpRequestLocalization();
             //路由

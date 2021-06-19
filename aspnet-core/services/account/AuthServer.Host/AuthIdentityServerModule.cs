@@ -1,4 +1,5 @@
 ﻿using DotNetCore.CAP;
+using LINGYUN.Abp.AspNetCore.HttpOverrides;
 using LINGYUN.Abp.EventBus.CAP;
 using LINGYUN.Abp.Identity.EntityFrameworkCore;
 using LINGYUN.Abp.IdentityServer;
@@ -11,7 +12,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.Configuration;
@@ -19,7 +19,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 using System;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Unicode;
@@ -29,7 +31,6 @@ using Volo.Abp.Account.Localization;
 using Volo.Abp.Account.Web;
 using Volo.Abp.AspNetCore.Authentication.JwtBearer;
 using Volo.Abp.AspNetCore.Mvc;
-using Volo.Abp.AspNetCore.Mvc.UI.MultiTenancy;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.Shared;
 using Volo.Abp.Auditing;
@@ -41,6 +42,7 @@ using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore.MySQL;
 using Volo.Abp.FeatureManagement.EntityFrameworkCore;
 using Volo.Abp.Identity;
+using Volo.Abp.IdentityServer;
 using Volo.Abp.IdentityServer.Jwt;
 using Volo.Abp.Json;
 using Volo.Abp.Json.SystemTextJson;
@@ -60,8 +62,6 @@ namespace AuthServer.Host
     [DependsOn(
         typeof(AbpAccountWebIdentityServerModule),
         typeof(AbpAccountApplicationModule),
-        typeof(AbpAspNetCoreMvcUiMultiTenancyModule),
-        typeof(AbpAspNetCoreMvcModule),
         typeof(AbpAspNetCoreMvcUiBasicThemeModule),
         typeof(AbpAutofacModule),
         typeof(AbpCachingStackExchangeRedisModule),
@@ -78,6 +78,7 @@ namespace AuthServer.Host
         typeof(AbpFeatureManagementEntityFrameworkCoreModule),
         typeof(AbpTenantManagementEntityFrameworkCoreModule),
         typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
+        typeof(AbpAspNetCoreHttpOverridesModule),
         typeof(AbpDbFinderMultiTenancyModule),
         typeof(AbpCAPEventBusModule),
         typeof(AbpAliyunSmsModule)
@@ -89,6 +90,7 @@ namespace AuthServer.Host
         public override void PreConfigureServices(ServiceConfigurationContext context)
         {
             var configuration = context.Services.GetConfiguration();
+            var hostingEnvironment = context.Services.GetHostingEnvironment();
 
             PreConfigure<CapOptions>(options =>
             {
@@ -100,6 +102,29 @@ namespace AuthServer.Host
                 })
                 .UseDashboard();
             });
+
+            var cerConfig = configuration.GetSection("Certificates");
+            if (hostingEnvironment.IsProduction() &&
+                cerConfig.Exists())
+            {
+                // 开发环境下存在证书配置
+                // 且证书文件存在则使用自定义的证书文件来启动Ids服务器
+                var cerPath = Path.Combine(hostingEnvironment.ContentRootPath, cerConfig["CerPath"]);
+                if (File.Exists(cerPath))
+                {
+                    PreConfigure<AbpIdentityServerBuilderOptions>(options =>
+                    {
+                        options.AddDeveloperSigningCredential = false;
+                    });
+
+                    var cer = new X509Certificate2(cerPath, cerConfig["Password"]);
+
+                    PreConfigure<IIdentityServerBuilder>(builder =>
+                    {
+                        builder.AddSigningCredential(cer);
+                    });
+                }
+            }
         }
 
         public override void ConfigureServices(ServiceConfigurationContext context)
@@ -107,25 +132,11 @@ namespace AuthServer.Host
             var hostingEnvironment = context.Services.GetHostingEnvironment();
             var configuration = context.Services.GetConfiguration();
 
-            // 请求代理配置
-            Configure<ForwardedHeadersOptions>(options =>
-            {
-                configuration.GetSection("App:Forwarded").Bind(options);
-                // 对于生产环境,为安全考虑需要在配置中指定受信任代理服务器
-                options.KnownNetworks.Clear();
-                options.KnownProxies.Clear();
-            });
-
             Configure<AbpDbContextOptions>(options =>
             {
                 options.UseMySQL();
             });
 
-            // 解决某些不支持类型的序列化
-            Configure<AbpJsonOptions>(options =>
-            {
-                options.UseHybridSerializer = true;
-            });
             // 中文序列化的编码问题
             Configure<AbpSystemTextJsonSerializerOptions>(options =>
             {
@@ -272,14 +283,13 @@ namespace AuthServer.Host
             var app = context.GetApplicationBuilder();
             var env = context.GetEnvironment();
 
-            // 从请求头中解析真实的客户机连接信息
-            app.UseForwardedHeaders();
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
             else
             {
+                // 需要实现一个错误页面
                 app.UseErrorPage();
                 app.UseHsts();
             }
@@ -287,14 +297,13 @@ namespace AuthServer.Host
             // app.UseHttpsRedirection();
             app.UseCookiePolicy();
             app.UseCorrelationId();
-            app.UseVirtualFiles();
+            app.UseStaticFiles();
             app.UseRouting();
             app.UseCors(DefaultCorsPolicyName);
             app.UseWeChatSignature();
             app.UseMultiTenancy();
             app.UseAuthentication();
             app.UseJwtTokenMiddleware();
-            app.UseAbpClaimsMap();
             app.UseAbpRequestLocalization();
             app.UseIdentityServer();
             app.UseAuthorization();

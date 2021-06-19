@@ -1,8 +1,10 @@
 ﻿using DotNetCore.CAP;
+using LINGYUN.Abp.AspNetCore.HttpOverrides;
 using LINGYUN.Abp.EventBus.CAP;
 using LINGYUN.Abp.ExceptionHandling;
 using LINGYUN.Abp.ExceptionHandling.Emailing;
 using LINGYUN.Abp.Features.LimitValidation.Redis;
+using LINGYUN.Abp.LocalizationManagement.EntityFrameworkCore;
 using LINGYUN.Abp.MultiTenancy.DbFinder;
 using LINGYUN.Abp.Notifications;
 using LINGYUN.Abp.OssManagement;
@@ -76,6 +78,7 @@ namespace LINGYUN.Platform
         typeof(AbpTenantManagementEntityFrameworkCoreModule),
         typeof(AbpSettingManagementEntityFrameworkCoreModule),
         typeof(AbpPermissionManagementEntityFrameworkCoreModule),
+        typeof(AbpLocalizationManagementEntityFrameworkCoreModule),
         typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
         typeof(AbpNotificationModule),
         typeof(AbpEmailingExceptionHandlingModule),
@@ -85,6 +88,7 @@ namespace LINGYUN.Platform
         // typeof(AbpFeaturesValidationRedisClientModule),// 当需要客户端特性限制时取消注释此模块
         typeof(AbpDbFinderMultiTenancyModule),
         typeof(AbpCachingStackExchangeRedisModule),
+        typeof(AbpAspNetCoreHttpOverridesModule),
         typeof(AbpAutofacModule)
         )]
     public class AppPlatformHttpApiHostModule : AbpModule
@@ -110,27 +114,13 @@ namespace LINGYUN.Platform
             var hostingEnvironment = context.Services.GetHostingEnvironment();
             var configuration = hostingEnvironment.BuildConfiguration();
 
-            // 请求代理配置
-            Configure<ForwardedHeadersOptions>(options =>
-            {
-                configuration.GetSection("App:Forwarded").Bind(options);
-                // 对于生产环境,为安全考虑需要在配置中指定受信任代理服务器
-                options.KnownNetworks.Clear();
-                options.KnownProxies.Clear();
-            });
-
             // 配置Ef
             Configure<AbpDbContextOptions>(options =>
             {
                 options.UseMySQL();
             });
 
-            // 解决某些不支持类型的序列化
-            Configure<AbpJsonOptions>(options =>
-            {
-                options.UseHybridSerializer = true;
-            });
-            // 中文序列化的编码问题
+            //// 中文序列化的编码问题
             Configure<AbpSystemTextJsonSerializerOptions>(options =>
             {
                 options.JsonSerializerOptions.Encoder = JavaScriptEncoder.Create(UnicodeRanges.All);
@@ -266,6 +256,8 @@ namespace LINGYUN.Platform
             {
                 options.Languages.Add(new LanguageInfo("en", "en", "English"));
                 options.Languages.Add(new LanguageInfo("zh-Hans", "zh-Hans", "简体中文"));
+
+                options.Resources.AddDynamic();
             });
 
             Configure<AbpClaimsMapOptions>(options =>
@@ -302,12 +294,10 @@ namespace LINGYUN.Platform
         {
             var app = context.GetApplicationBuilder();
             var env = context.GetEnvironment();
-
-            app.UseForwardedHeaders();
             // http调用链
             app.UseCorrelationId();
             // 虚拟文件系统
-            app.UseVirtualFiles();
+            app.UseStaticFiles();
             // 本地化
             app.UseAbpRequestLocalization();
             // 多租户
@@ -316,7 +306,6 @@ namespace LINGYUN.Platform
             app.UseRouting();
             // 认证
             app.UseAuthentication();
-            app.UseAbpClaimsMap();
             // jwt
             app.UseJwtTokenMiddleware();
             // 授权

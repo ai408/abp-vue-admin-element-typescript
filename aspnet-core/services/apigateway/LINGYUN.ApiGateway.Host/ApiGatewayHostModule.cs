@@ -1,4 +1,5 @@
 ﻿using DotNetCore.CAP;
+using LINGYUN.Abp.AspNetCore.HttpOverrides;
 using LINGYUN.Abp.EventBus.CAP;
 using LINGYUN.ApiGateway.Localization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,7 +12,6 @@ using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Ocelot.Configuration.Creator;
 using Ocelot.Configuration.Repository;
 using Ocelot.DependencyInjection;
 using Ocelot.Extenssions;
@@ -24,18 +24,15 @@ using System.Text.Encodings.Web;
 using System.Text.Unicode;
 using Volo.Abp;
 using Volo.Abp.AspNetCore;
-using Volo.Abp.AspNetCore.Security.Claims;
 using Volo.Abp.Autofac;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Caching;
 using Volo.Abp.Caching.StackExchangeRedis;
 using Volo.Abp.Http.Client.IdentityModel;
-using Volo.Abp.IdentityModel;
 using Volo.Abp.Json;
 using Volo.Abp.Json.SystemTextJson;
 using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
-using Volo.Abp.Security.Claims;
 using Volo.Abp.Security.Encryption;
 using Volo.Abp.VirtualFileSystem;
 
@@ -48,7 +45,8 @@ namespace LINGYUN.ApiGateway
         typeof(AbpAutoMapperModule),
         typeof(ApiGatewayHttpApiClientModule),
         typeof(AbpCAPEventBusModule),
-        typeof(AbpAspNetCoreModule)
+        typeof(AbpAspNetCoreModule),
+        typeof(AbpAspNetCoreHttpOverridesModule)
         )]
     public class ApiGatewayHostModule : AbpModule
     {
@@ -86,11 +84,6 @@ namespace LINGYUN.ApiGateway
 
             Configure<ApiGatewayOptions>(configuration.GetSection("ApiGateway"));
 
-            // 解决某些不支持类型的序列化
-            Configure<AbpJsonOptions>(options =>
-            {
-                options.UseHybridSerializer = true;
-            });
             // 中文序列化的编码问题
             Configure<AbpSystemTextJsonSerializerOptions>(options =>
             {
@@ -198,10 +191,9 @@ namespace LINGYUN.ApiGateway
         {
             var app = context.GetApplicationBuilder();
 
-            // 网关不需要加代理中间件
-
+            app.UseForwardedHeaders();
             app.UseAuditing();
-            app.UseVirtualFiles();
+            app.UseStaticFiles();
             app.UseRouting();
             app.UseAuthentication();
             app.UseAbpClaimsMap();
@@ -213,6 +205,7 @@ namespace LINGYUN.ApiGateway
                     appNext.UseRouting();
                     appNext.UseConfiguredEndpoints();
                 });
+
             // 启用ws协议
             app.UseWebSockets();
             app.UseOcelot().Wait();

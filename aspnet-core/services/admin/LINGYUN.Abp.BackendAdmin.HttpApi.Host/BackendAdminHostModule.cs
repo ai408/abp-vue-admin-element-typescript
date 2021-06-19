@@ -1,10 +1,13 @@
 ﻿using DotNetCore.CAP;
 using LINGYUN.Abp.Aliyun.SettingManagement;
+using LINGYUN.Abp.AspNetCore.HttpOverrides;
 using LINGYUN.Abp.Auditing;
 using LINGYUN.Abp.EventBus.CAP;
 using LINGYUN.Abp.ExceptionHandling;
 using LINGYUN.Abp.ExceptionHandling.Emailing;
 using LINGYUN.Abp.FeatureManagement;
+using LINGYUN.Abp.LocalizationManagement;
+using LINGYUN.Abp.LocalizationManagement.EntityFrameworkCore;
 using LINGYUN.Abp.MessageService;
 using LINGYUN.Abp.MultiTenancy.DbFinder;
 using LINGYUN.Abp.OssManagement;
@@ -72,6 +75,7 @@ namespace LINGYUN.Abp.BackendAdmin
         typeof(ApiGatewayApplicationContractsModule),
         typeof(AbpOssManagementApplicationContractsModule),
         typeof(AbpMessageServiceApplicationContractsModule),
+        typeof(AbpLocalizationManagementApplicationContractsModule),
         typeof(LINGYUN.Abp.Account.AbpAccountApplicationContractsModule),// 引用类似的包主要用于聚合权限管理和设置
         typeof(LINGYUN.Abp.Identity.AbpIdentityApplicationContractsModule),
         typeof(LINGYUN.Abp.IdentityServer.AbpIdentityServerApplicationContractsModule),
@@ -98,12 +102,14 @@ namespace LINGYUN.Abp.BackendAdmin
         typeof(AbpPermissionManagementDomainIdentityServerModule),
         typeof(AbpPermissionManagementEntityFrameworkCoreModule),
         typeof(AbpFeatureManagementEntityFrameworkCoreModule),
+        typeof(AbpLocalizationManagementEntityFrameworkCoreModule),
         typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
         typeof(AbpEmailingExceptionHandlingModule),
         typeof(AbpCAPEventBusModule),
         typeof(AbpAliyunSmsModule),
         typeof(AbpDbFinderMultiTenancyModule),
         typeof(AbpCachingStackExchangeRedisModule),
+        typeof(AbpAspNetCoreHttpOverridesModule),
         typeof(AbpAutofacModule)
         )]
     public class BackendAdminHostModule : AbpModule
@@ -129,26 +135,12 @@ namespace LINGYUN.Abp.BackendAdmin
             var hostingEnvironment = context.Services.GetHostingEnvironment();
             var configuration = hostingEnvironment.BuildConfiguration();
 
-            // 请求代理配置
-            Configure<ForwardedHeadersOptions>(options =>
-            {
-                configuration.GetSection("App:Forwarded").Bind(options);
-                // 对于生产环境,为安全考虑需要在配置中指定受信任代理服务器
-                options.KnownNetworks.Clear();
-                options.KnownProxies.Clear();
-            });
-
             // 配置Ef
             Configure<AbpDbContextOptions>(options =>
             {
                 options.UseMySQL();
             });
 
-            // 解决某些不支持类型的序列化
-            Configure<AbpJsonOptions>(options =>
-            {
-                options.UseHybridSerializer = true;
-            });
             // 中文序列化的编码问题
             Configure<AbpSystemTextJsonSerializerOptions>(options =>
             {
@@ -309,6 +301,8 @@ namespace LINGYUN.Abp.BackendAdmin
                         "vue-admin-element-ui",
                         new NameValue("zh-Hans", "zh"),
                         new NameValue("en", "en"));
+
+                options.Resources.AddDynamic();
             });
 
             Configure<AbpClaimsMapOptions>(options =>
@@ -336,19 +330,16 @@ namespace LINGYUN.Abp.BackendAdmin
         public override void OnApplicationInitialization(ApplicationInitializationContext context)
         {
             var app = context.GetApplicationBuilder();
-            // 代理的中间件应放在其他中间件之前
-            app.UseForwardedHeaders();
             // http调用链
             app.UseCorrelationId();
             // 虚拟文件系统
-            app.UseVirtualFiles();
+            app.UseStaticFiles();
             // 本地化
             app.UseAbpRequestLocalization();
             //路由
             app.UseRouting();
             // 认证
             app.UseAuthentication();
-            app.UseAbpClaimsMap();
             // jwt
             app.UseJwtTokenMiddleware();
             // 多租户

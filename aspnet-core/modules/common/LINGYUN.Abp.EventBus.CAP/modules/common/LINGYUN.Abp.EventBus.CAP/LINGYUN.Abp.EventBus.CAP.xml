@@ -9,6 +9,11 @@
             消费者查找器
             </summary>
         </member>
+        <member name="P:DotNetCore.CAP.ConsumerServiceSelector.CapOptions">
+            <summary>
+            CAP配置
+            </summary>
+        </member>
         <member name="P:DotNetCore.CAP.ConsumerServiceSelector.AbpDistributedEventBusOptions">
             <summary>
             Abp分布式事件配置
@@ -19,7 +24,7 @@
             服务提供者
             </summary>
         </member>
-        <member name="M:DotNetCore.CAP.ConsumerServiceSelector.#ctor(System.IServiceProvider,Microsoft.Extensions.Options.IOptions{Volo.Abp.EventBus.Distributed.AbpDistributedEventBusOptions})">
+        <member name="M:DotNetCore.CAP.ConsumerServiceSelector.#ctor(System.IServiceProvider,Microsoft.Extensions.Options.IOptions{DotNetCore.CAP.CapOptions},Microsoft.Extensions.Options.IOptions{Volo.Abp.EventBus.Distributed.AbpDistributedEventBusOptions})">
             <summary>
             Creates a new <see cref="T:DotNetCore.CAP.Internal.ConsumerServiceSelector" />.
             </summary>
@@ -164,14 +169,14 @@
             constructor
             </summary>
             <param name="messageType"></param>
-            <param name="prigin"></param>
+            <param name="origin"></param>
         </member>
         <member name="M:LINGYUN.Abp.EventBus.CAP.AbpCAPExecutionFailedException.#ctor(DotNetCore.CAP.Messages.MessageType,DotNetCore.CAP.Messages.Message,System.String)">
             <summary>
             constructor
             </summary>
             <param name="messageType"></param>
-            <param name="prigin"></param>
+            <param name="origin"></param>
             <param name="message"></param>
         </member>
         <member name="M:LINGYUN.Abp.EventBus.CAP.AbpCAPExecutionFailedException.#ctor(DotNetCore.CAP.Messages.MessageType,DotNetCore.CAP.Messages.Message,System.String,System.Exception)">
@@ -179,7 +184,7 @@
             constructor
             </summary>
             <param name="messageType"></param>
-            <param name="prigin"></param>
+            <param name="origin"></param>
             <param name="message"></param>
             <param name="innerException"></param>
         </member>
@@ -188,7 +193,7 @@
             CAP消息扩展
             </summary>
         </member>
-        <member name="M:LINGYUN.Abp.EventBus.CAP.AbpCAPMessageExtensions.TryGetTenantId(DotNetCore.CAP.Messages.Message,System.Guid@)">
+        <member name="M:LINGYUN.Abp.EventBus.CAP.AbpCAPMessageExtensions.TryGetTenantId(DotNetCore.CAP.Messages.Message,System.Nullable{System.Guid}@)">
             <summary>
             尝试获取消息标头中的租户标识
             </summary>

@@ -1,5 +1,6 @@
 ﻿using DotNetCore.CAP;
 using Hangfire;
+using LINGYUN.Abp.AspNetCore.HttpOverrides;
 using LINGYUN.Abp.AspNetCore.SignalR.Protocol.Json;
 using LINGYUN.Abp.BackgroundJobs.Hangfire;
 using LINGYUN.Abp.EventBus.CAP;
@@ -7,7 +8,6 @@ using LINGYUN.Abp.ExceptionHandling;
 using LINGYUN.Abp.ExceptionHandling.Notifications;
 using LINGYUN.Abp.Hangfire.Storage.MySql;
 using LINGYUN.Abp.IM.SignalR;
-using LINGYUN.Abp.MessageService.Authorization;
 using LINGYUN.Abp.MessageService.EntityFrameworkCore;
 using LINGYUN.Abp.MessageService.Localization;
 using LINGYUN.Abp.MultiTenancy.DbFinder;
@@ -26,15 +26,19 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 using StackExchange.Redis;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Unicode;
 using Volo.Abp;
+using Volo.Abp.AspNetCore.Auditing;
 using Volo.Abp.AspNetCore.Authentication.JwtBearer;
 using Volo.Abp.AspNetCore.MultiTenancy;
 using Volo.Abp.AspNetCore.Security.Claims;
+using Volo.Abp.AspNetCore.Uow;
 using Volo.Abp.Autofac;
+using Volo.Abp.BackgroundWorkers;
 using Volo.Abp.Caching;
 using Volo.Abp.Caching.StackExchangeRedis;
 using Volo.Abp.EntityFrameworkCore;
@@ -61,6 +65,9 @@ namespace LINGYUN.Abp.MessageService
         typeof(AbpSettingManagementEntityFrameworkCoreModule),
         typeof(AbpPermissionManagementEntityFrameworkCoreModule),
         typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
+        typeof(AbpHangfireMySqlStorageModule),
+        typeof(AbpBackgroundJobsHangfireModule),
+        typeof(AbpBackgroundWorkersModule),
         typeof(AbpIMSignalRModule),
         typeof(AbpNotificationsSmsModule),
         typeof(AbpNotificationsSignalRModule),
@@ -68,10 +75,9 @@ namespace LINGYUN.Abp.MessageService
         typeof(AbpNotificationsExceptionHandlingModule),
         typeof(AbpAspNetCoreSignalRProtocolJsonModule),
         typeof(AbpCAPEventBusModule),
-        typeof(AbpBackgroundJobsHangfireModule),
-        typeof(AbpHangfireMySqlStorageModule),
         typeof(AbpDbFinderMultiTenancyModule),
         typeof(AbpCachingStackExchangeRedisModule),
+        typeof(AbpAspNetCoreHttpOverridesModule),
         typeof(AbpAutofacModule)
         )]
     public class AbpMessageServiceHttpApiHostModule : AbpModule
@@ -99,26 +105,17 @@ namespace LINGYUN.Abp.MessageService
             var hostingEnvironment = context.Services.GetHostingEnvironment();
             var configuration = hostingEnvironment.BuildConfiguration();
 
-            // 请求代理配置
-            Configure<ForwardedHeadersOptions>(options =>
-            {
-                configuration.GetSection("App:Forwarded").Bind(options);
-                // 对于生产环境,为安全考虑需要在配置中指定受信任代理服务器
-                options.KnownNetworks.Clear();
-                options.KnownProxies.Clear();
-            });
-
             // 配置Ef
             Configure<AbpDbContextOptions>(options =>
             {
                 options.UseMySQL();
             });
 
-            // 解决某些不支持类型的序列化
-            Configure<AbpJsonOptions>(options =>
+            Configure<AbpAspNetCoreAuditingOptions>(options =>
             {
-                options.UseHybridSerializer = true;
+                options.IgnoredUrls.AddIfNotContains("/hangfire");
             });
+
             // 中文序列化的编码问题
             Configure<AbpSystemTextJsonSerializerOptions>(options =>
             {
@@ -242,25 +239,6 @@ namespace LINGYUN.Abp.MessageService
                 });
             });
 
-            Configure<HangfireDashboardRouteOptions>(options =>
-            {
-                if (configuration.GetSection("Hangfire:Dashboard:WhiteList").Exists())
-                {
-                    options.WithWhite(
-                        configuration["Hangfire:Dashboard:WhiteList"]
-                            .Split(",", StringSplitOptions.RemoveEmptyEntries)
-                            .Select(o => o.RemovePostFix("/"))
-                                .ToArray());
-                }
-                
-                options.WithOrigins(
-                    configuration["App:CorsOrigins"]
-                        .Split(",", StringSplitOptions.RemoveEmptyEntries)
-                        .Select(o => o.RemovePostFix("/"))
-                        .ToArray()
-                    );
-            });
-
             // 支持本地化语言类型
             Configure<AbpLocalizationOptions>(options =>
             {
@@ -270,11 +248,6 @@ namespace LINGYUN.Abp.MessageService
                 options.Resources
                        .Get<MessageServiceResource>()
                        .AddVirtualJson("/Localization/HttpApiHost");
-            });
-
-            Configure<AbpClaimsMapOptions>(options =>
-            {
-                options.Maps.TryAdd("name", () => AbpClaimTypes.UserName);
             });
 
             context.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -294,23 +267,13 @@ namespace LINGYUN.Abp.MessageService
             }
         }
 
-        //public override void OnPostApplicationInitialization(ApplicationInitializationContext context)
-        //{
-        //    var backgroundJobManager = context.ServiceProvider.GetRequiredService<IBackgroundJobManager>();
-        //    // 五分钟执行一次的定时任务
-        //    AsyncHelper.RunSync(async () => await
-        //        backgroundJobManager.EnqueueAsync(CronGenerator.Minute(5), new NotificationCleanupExpritionJobArgs(200)));
-        //}
-
         public override void OnApplicationInitialization(ApplicationInitializationContext context)
         {
             var app = context.GetApplicationBuilder();
-
-            app.UseForwardedHeaders();
             // http调用链
             app.UseCorrelationId();
             // 虚拟文件系统
-            app.UseVirtualFiles();
+            app.UseStaticFiles();
             // 本地化
             app.UseAbpRequestLocalization();
             //路由
@@ -320,10 +283,9 @@ namespace LINGYUN.Abp.MessageService
             // 加入自定义中间件
             app.UseSignalRJwtToken();
             // TODO: 还有没有其他方法在iframe中传递身份令牌?
-            app.UseHangfireJwtToken();
+            app.UseHangfireAuthorication();
             // 认证
             app.UseAuthentication();
-            app.UseAbpClaimsMap();
             // jwt
             app.UseJwtTokenMiddleware();
             // 授权
@@ -340,11 +302,7 @@ namespace LINGYUN.Abp.MessageService
             // 审计日志
             app.UseAuditing();
             app.UseHangfireServer();
-            app.UseHangfireDashboard(options =>
-            {
-                options.IgnoreAntiforgeryToken = true;
-                options.UseAuthorization(new HangfireDashboardAuthorizationFilter());
-            });
+            app.UseHangfireDashboard();
             // 路由
             app.UseConfiguredEndpoints();
         }

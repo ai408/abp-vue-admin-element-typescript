@@ -1,4 +1,5 @@
 ﻿using DotNetCore.CAP;
+using LINGYUN.Abp.AspNetCore.HttpOverrides;
 using LINGYUN.Abp.EventBus.CAP;
 using LINGYUN.Abp.MultiTenancy.DbFinder;
 using LINGYUN.ApiGateway.EntityFrameworkCore;
@@ -14,6 +15,8 @@ using Microsoft.OpenApi.Models;
 using StackExchange.Redis;
 using System;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using Volo.Abp;
 using Volo.Abp.AspNetCore.Security.Claims;
 using Volo.Abp.Auditing;
@@ -25,6 +28,8 @@ using Volo.Abp.Caching.StackExchangeRedis;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore.MySQL;
+using Volo.Abp.Json;
+using Volo.Abp.Json.SystemTextJson;
 using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
 using Volo.Abp.MultiTenancy;
@@ -34,10 +39,6 @@ using Volo.Abp.Security.Encryption;
 using Volo.Abp.SettingManagement.EntityFrameworkCore;
 using Volo.Abp.TenantManagement.EntityFrameworkCore;
 using Volo.Abp.Threading;
-using Volo.Abp.Json;
-using Volo.Abp.Json.SystemTextJson;
-using System.Text.Encodings.Web;
-using System.Text.Unicode;
 
 namespace LINGYUN.ApiGateway
 {
@@ -53,6 +54,7 @@ namespace LINGYUN.ApiGateway
         typeof(AbpCAPEventBusModule),
         typeof(AbpDbFinderMultiTenancyModule),
         typeof(AbpCachingStackExchangeRedisModule),
+        typeof(AbpAspNetCoreHttpOverridesModule),
         typeof(AbpAutofacModule)
         )]
     public class ApiGatewayHttpApiHostModule : AbpModule
@@ -77,26 +79,12 @@ namespace LINGYUN.ApiGateway
             var hostingEnvironment = context.Services.GetHostingEnvironment();
             var configuration = hostingEnvironment.BuildConfiguration();
 
-            // 请求代理配置
-            Configure<ForwardedHeadersOptions>(options =>
-            {
-                configuration.GetSection("App:Forwarded").Bind(options);
-                // 对于生产环境,为安全考虑需要在配置中指定受信任代理服务器
-                options.KnownNetworks.Clear();
-                options.KnownProxies.Clear();
-            });
-
             // 配置Ef
             Configure<AbpDbContextOptions>(options =>
             {
                 options.UseMySQL();
             });
 
-            // 解决某些不支持类型的序列化
-            Configure<AbpJsonOptions>(options =>
-            {
-                options.UseHybridSerializer = true;
-            });
             // 中文序列化的编码问题
             Configure<AbpSystemTextJsonSerializerOptions>(options =>
             {
@@ -227,17 +215,14 @@ namespace LINGYUN.ApiGateway
         {
             var app = context.GetApplicationBuilder();
             var configuration = context.GetConfiguration();
-
-            app.UseForwardedHeaders();
             // http调用链
             app.UseCorrelationId();
             // 虚拟文件系统
-            app.UseVirtualFiles();
+            app.UseStaticFiles();
             //路由
             app.UseRouting();
             // 认证
             app.UseAuthentication();
-            app.UseAbpClaimsMap();
             // 多租户
             // app.UseMultiTenancy();
             // 本地化

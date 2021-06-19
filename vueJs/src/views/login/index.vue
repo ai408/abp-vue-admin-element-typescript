@@ -156,7 +156,8 @@ import { UserModule } from '@/store/modules/user'
 import { Dictionary } from 'vue-router/types/router'
 import TenantBox from '@/components/TenantBox/index.vue'
 import LangSelect from '@/components/LangSelect/index.vue'
-import { Component, Vue, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
+import LocalizationMiXin from '@/mixins/LocalizationMiXin'
 import UserService from '@/api/users'
 import { AbpModule } from '@/store/modules/abp'
 
@@ -167,7 +168,7 @@ import { AbpModule } from '@/store/modules/abp'
     TenantBox
   }
 })
-export default class extends Vue {
+export default class extends Mixins(LocalizationMiXin) {
   private loginType = 'password'
   private passwordType = 'password'
   private redirect?: string
@@ -265,31 +266,38 @@ export default class extends Vue {
 
   private handleUserLogin() {
     const frmLogin = this.$refs.formLogin as any
-    frmLogin.validate(async(valid: boolean) => {
+    frmLogin.validate((valid: boolean) => {
       if (valid) {
         this.logining = true
-        try {
-          if (this.loginType === 'password') {
-            const userLogin = {
-              username: this.loginForm.username,
-              password: this.loginForm.password
-            }
-            await UserModule.Login(userLogin)
-            this.$router.push({
-              path: this.redirect || '/'
-            })
-          } else {
-            const phoneLogin = {
-              phoneNumber: this.loginForm.phoneNumber,
-              verifyCode: this.loginForm.verifyCode
-            }
-            await UserModule.PhoneLogin(phoneLogin)
-            this.$router.push({
-              path: this.redirect || '/'
-            })
+        if (this.loginType === 'password') {
+          const userLogin = {
+            username: this.loginForm.username,
+            password: this.loginForm.password
           }
-        } catch {
-          this.resetLoginButton()
+          UserModule.Login(userLogin)
+            .then(() => {
+              this.$router.push({
+                path: this.redirect || '/'
+              })
+            })
+            .finally(() => {
+              this.resetLoginButton()
+            })
+        } else {
+          const phoneLogin = {
+            phoneNumber: this.loginForm.phoneNumber,
+            verifyCode: this.loginForm.verifyCode
+          }
+          UserModule.PhoneLogin(phoneLogin)
+            .then(() => {
+              console.log(this.$router)
+              this.$router.push({
+                path: this.redirect || '/'
+              })
+            })
+            .finally(() => {
+              this.resetLoginButton()
+            })
         }
       }
     })
@@ -322,10 +330,6 @@ export default class extends Vue {
 
   private handleLoginTabChanged(tab: any) {
     this.loginType = tab.paneName === '1' ? 'phone' : 'password'
-  }
-
-  private l(name: string, values?: any[] | { [key: string]: any }) {
-    return this.$t(name, values).toString()
   }
 
   private resetLoginButton() {
